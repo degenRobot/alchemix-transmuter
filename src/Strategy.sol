@@ -3,6 +3,8 @@ pragma solidity 0.8.18;
 
 import {BaseStrategy, ERC20} from "@tokenized-strategy/BaseStrategy.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import {ITransmuter} from "./interfaces/ITransmuter.sol";
+import {ICurveStableSwapNG} from "./interfaces/ICurve.sol";
 
 // Import interfaces for many popular DeFi projects, or add your own!
 //import "../interfaces/<protocol>/<Interface>.sol";
@@ -23,14 +25,39 @@ import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol
 contract Strategy is BaseStrategy {
     using SafeERC20 for ERC20;
 
+    ITransmuter public transmuter;
+    ICurveStableSwapNG public curvePool;
+    int128 public assetIndex;
+    int128 public underlyingIndex;
+
+    uint256 public slippageContraint = 9900;
+    uint256 public bps = 10000;
+
+    // since the asset is ALETH, we need to set the underlying to WETH
+    ERC20 public underlying; 
+
     constructor(
         address _asset,
         string memory _name
-    ) BaseStrategy(_asset, _name) {}
+    ) BaseStrategy(_asset, _name) {
+        _initStrategy();
+    }
 
-    /*//////////////////////////////////////////////////////////////
-                NEEDED TO BE OVERRIDDEN BY STRATEGIST
-    //////////////////////////////////////////////////////////////*/
+    function _initStrategy() internal {
+        transmuter = ITransmuter(0x03323143a5f0D0679026C2a9fB6b0391e4D64811);
+        curvePool = ICurveStableSwapNG(0x8eFD02a0a40545F32DbA5D664CbBC1570D3FedF6);
+
+        assetIndex = 0;
+        underlyingIndex = 1;
+
+        // WETH
+        underlying = ERC20(0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2);
+
+
+        asset.safeApprove(address(transmuter), type(uint256).max);
+        underlying.safeApprove(address(curvePool), type(uint256).max);
+        
+    }
 
     /**
      * @dev Can deploy up to '_amount' of 'asset' in the yield source.
@@ -44,9 +71,28 @@ contract Strategy is BaseStrategy {
      * to deposit in the yield source.
      */
     function _deployFunds(uint256 _amount) internal override {
-        // TODO: implement deposit logic EX:
-        //
-        //      lendingPool.deposit(address(asset), _amount ,0);
+
+        if (underlying.balanceOf(address(this)) > 0) {
+            _swapUnderlyingToAsset(underlying.balanceOf(address(this)));
+        }
+        transmuter.deposit(asset.balanceOf(address(this)), address(this));
+    }
+
+
+    function _swapUnderlyingToAsset(uint256 _amount) internal {
+        // TODO : we swap WETH to ALETH -> need to check that price is better than 1:1 
+        uint256 oraclePrice = curvePool.price_oracle(0);
+
+        // TODO : check if need to do any decimal conversions 
+        if (oraclePrice > 1e18) {
+            uint256 minDy = _amount * oraclePrice * slippageContraint / bps;
+            if (minDy < _amount) {
+                minDy = _amount;
+            }
+
+            curvePool.exchange(assetIndex, underlyingIndex, _amount, minDy);
+        }
+
     }
 
     /**
@@ -71,9 +117,20 @@ contract Strategy is BaseStrategy {
      * @param _amount, The amount of 'asset' to be freed.
      */
     function _freeFunds(uint256 _amount) internal override {
-        // TODO: implement withdraw logic EX:
-        //
-        //      lendingPool.withdraw(address(asset), _amount);
+
+        uint256 claimable = transmuter.getClaimableBalance(address(this));
+
+        if (claimable < _amount) {
+            transmuter.claim(_amount - claimable, address(this));
+        } else {
+            transmuter.claim(_amount, address(this));
+        }
+
+    }
+
+
+    function balanceDeployed() public view returns (uint256) {
+        return transmuter.getExchangedBalance(address(this)) + transmuter.getUnexchangedBalance(address(this)) + underlying.balanceOf(address(this));
     }
 
     /**
@@ -103,14 +160,24 @@ contract Strategy is BaseStrategy {
         override
         returns (uint256 _totalAssets)
     {
-        // TODO: Implement harvesting logic and accurate accounting EX:
-        //
-        //      if(!TokenizedStrategy.isShutdown()) {
-        //          _claimAndSellRewards();
-        //      }
-        //      _totalAssets = aToken.balanceOf(address(this)) + asset.balanceOf(address(this));
-        //
-        _totalAssets = asset.balanceOf(address(this));
+
+        uint256 claimable = transmuter.getClaimableBalance(address(this));
+
+        if (claimable > 0) {
+            transmuter.claim(claimable, address(this));
+        }
+
+        if (underlying.balanceOf(address(this)) > 0) {
+            _swapUnderlyingToAsset(underlying.balanceOf(address(this)));
+        }
+        
+        uint256 exchanged = transmuter.getExchangedBalance(address(this));
+        uint256 unexchanged = transmuter.getUnexchangedBalance(address(this));
+
+        // NOTE : possible some dormant WETH that isn't swapped yet 
+        uint256 underlyingBalance = underlying.balanceOf(address(this));
+
+        _totalAssets = exchanged + unexchanged + asset.balanceOf(address(this)) + underlyingBalance;
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -147,7 +214,9 @@ contract Strategy is BaseStrategy {
         // if(yieldSource.notShutdown()) {
         //    return asset.balanceOf(address(this)) + asset.balanceOf(yieldSource);
         // }
-        return asset.balanceOf(address(this));
+
+        uint256 claimable = transmuter.getClaimableBalance(address(this));
+        return claimable + asset.balanceOf(address(this));
     }
 
     /**

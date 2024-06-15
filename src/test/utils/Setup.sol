@@ -6,6 +6,7 @@ import {ExtendedTest} from "./ExtendedTest.sol";
 
 import {Strategy, ERC20} from "../../Strategy.sol";
 import {IStrategyInterface} from "../../interfaces/IStrategyInterface.sol";
+import {IWhitelist} from "../../interfaces/IWhitelist.sol";
 
 // Inherit the events so they can be checked if desired.
 import {IEvents} from "@tokenized-strategy/interfaces/IEvents.sol";
@@ -22,6 +23,7 @@ contract Setup is ExtendedTest, IEvents {
     // Contract instances that we will use repeatedly.
     ERC20 public asset;
     IStrategyInterface public strategy;
+    IWhitelist public whitelist;
 
     mapping(string => address) public tokenAddrs;
 
@@ -49,13 +51,18 @@ contract Setup is ExtendedTest, IEvents {
         _setTokenAddrs();
 
         // Set asset
-        asset = ERC20(tokenAddrs["DAI"]);
+        asset = ERC20(0x0100546F2cD4C9D97f798fFC9755E47865FF7Ee6);
 
         // Set decimals
         decimals = asset.decimals();
 
         // Deploy strategy and set variables
         strategy = IStrategyInterface(setUpStrategy());
+
+        // whitelist hte strategy
+        whitelist = IWhitelist(0x211C74DB951c161c5A379363716EbDca5125EF59);
+        vm.prank(whitelist.owner());
+        whitelist.add(address(strategy));
 
         factory = strategy.FACTORY();
 

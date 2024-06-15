@@ -19,6 +19,21 @@ contract OperationTest is Setup {
         // TODO: add additional check on strat params
     }
 
+    function test_deposit(uint256 _amount) public {
+        vm.assume(_amount > minFuzzAmount && _amount < maxFuzzAmount);
+
+        // Deposit into strategy
+        mintAndDepositIntoStrategy(strategy, user, _amount);
+
+        console.log("Amount deposited", _amount);
+        console.log("Total Assets", strategy.totalAssets());
+
+
+        assertApproxEq(strategy.totalAssets(), _amount, _amount / 500);
+
+    }
+
+
     function test_operation(uint256 _amount) public {
         vm.assume(_amount > minFuzzAmount && _amount < maxFuzzAmount);
 
