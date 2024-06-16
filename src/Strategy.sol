@@ -30,6 +30,8 @@ contract Strategy is BaseStrategy {
     int128 public assetIndex;
     int128 public underlyingIndex;
 
+    // Target % of reserves to keep liquid for withdrawals 
+    uint256 public targetReserve = 500;
     uint256 public slippageContraint = 9900;
     uint256 public bps = 10000;
 
@@ -52,8 +54,6 @@ contract Strategy is BaseStrategy {
 
         // WETH
         underlying = ERC20(0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2);
-
-
         asset.safeApprove(address(transmuter), type(uint256).max);
         underlying.safeApprove(address(curvePool), type(uint256).max);
         
@@ -72,14 +72,22 @@ contract Strategy is BaseStrategy {
      */
     function _deployFunds(uint256 _amount) internal override {
 
-        if (underlying.balanceOf(address(this)) > 0) {
-            _swapUnderlyingToAsset(underlying.balanceOf(address(this)));
+        uint256 totalAssets = balanceDeployed() + asset.balanceOf(address(this));
+        uint256 targetReserveAmount = totalAssets * targetReserve / bps;
+
+        if (targetReserveAmount < (asset.balanceOf(address(this)))) {
+            uint256 amountToDeposit = (asset.balanceOf(address(this))) - targetReserveAmount;
+            transmuter.deposit(amountToDeposit, address(this));
         }
-        transmuter.deposit(asset.balanceOf(address(this)), address(this));
+    }
+
+    function claimAndSwap(uint256 _amountClaim, uint256 _minOut) external onlyKeepers {
+        transmuter.claim(_amountClaim, address(this));
+        _swapUnderlyingToAsset(_amountClaim, _minOut);
     }
 
 
-    function _swapUnderlyingToAsset(uint256 _amount) internal {
+    function _swapUnderlyingToAsset(uint256 _amount, uint256 minOut) internal {
         // TODO : we swap WETH to ALETH -> need to check that price is better than 1:1 
         uint256 oraclePrice = curvePool.price_oracle(0);
 
@@ -89,6 +97,7 @@ contract Strategy is BaseStrategy {
             if (minDy < _amount) {
                 minDy = _amount;
             }
+            require(minDy > minOut, "minDy too low");
 
             curvePool.exchange(assetIndex, underlyingIndex, _amount, minDy);
         }
@@ -126,6 +135,7 @@ contract Strategy is BaseStrategy {
             transmuter.claim(_amount, address(this));
         }
 
+        // NOTE : do we want to let the user init swap WETH back to ALETH for withdrawals -> can potentially be done with slippage constraints in place 
     }
 
 
@@ -167,9 +177,10 @@ contract Strategy is BaseStrategy {
             transmuter.claim(claimable, address(this));
         }
 
-        if (underlying.balanceOf(address(this)) > 0) {
-            _swapUnderlyingToAsset(underlying.balanceOf(address(this)));
-        }
+        // NOTE : we can do this in harvest or can do seperately in tend 
+        // if (underlying.balanceOf(address(this)) > 0) {
+        //     _swapUnderlyingToAsset(underlying.balanceOf(address(this)));
+        // }
         
         uint256 exchanged = transmuter.getExchangedBalance(address(this));
         uint256 unexchanged = transmuter.getUnexchangedBalance(address(this));
@@ -214,9 +225,10 @@ contract Strategy is BaseStrategy {
         // if(yieldSource.notShutdown()) {
         //    return asset.balanceOf(address(this)) + asset.balanceOf(yieldSource);
         // }
-
+        // NOTE : claimable balance can only be included if we are actually allowing swaps to happen on withdrawals
         uint256 claimable = transmuter.getClaimableBalance(address(this));
-        return claimable + asset.balanceOf(address(this));
+        
+        return asset.balanceOf(address(this));
     }
 
     /**
