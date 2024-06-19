@@ -32,7 +32,7 @@ contract Strategy is BaseStrategy {
 
     // Target % of reserves to keep liquid for withdrawals 
     uint256 public targetReserve = 0;
-    uint256 public slippageContraint = 9900;
+    uint256 public slippageContraint = 9600;
     uint256 public bps = 10000;
 
     // since the asset is ALETH, we need to set the underlying to WETH
@@ -90,8 +90,8 @@ contract Strategy is BaseStrategy {
 
     function _swapUnderlyingToAsset(uint256 _amount, uint256 minOut) internal {
         // TODO : we swap WETH to ALETH -> need to check that price is better than 1:1 
-        uint256 oraclePrice = 1e18 * 101 / 100;
-        //uint256 oraclePrice = curvePool.price_oracle(0);
+        // uint256 oraclePrice = 1e18 * 101 / 100;
+        uint256 oraclePrice = curvePool.price_oracle(0);
 
         // TODO : check if need to do any decimal conversions 
         if (oraclePrice > 1e18) {
@@ -130,17 +130,12 @@ contract Strategy is BaseStrategy {
      * @param _amount, The amount of 'asset' to be freed.
      */
     function _freeFunds(uint256 _amount) internal override {
-
         uint256 totalAvailabe = transmuter.getUnexchangedBalance(address(this)) + asset.balanceOf(address(this));
-
-        if (_amount > asset.balanceOf(address(this))) {
-            uint256 amountToWithdraw = _amount - asset.balanceOf(address(this));
-            if (amountToWithdraw > transmuter.getUnexchangedBalance(address(this))) {
-                amountToWithdraw = transmuter.getUnexchangedBalance(address(this));
-            }
-            transmuter.withdraw(amountToWithdraw, address(this));
+        if (_amount > totalAvailabe) {
+            transmuter.withdraw(totalAvailabe, address(this));
+        } else {
+            transmuter.withdraw(_amount, address(this));
         }
-        // NOTE : do we want to let the user init swap WETH back to ALETH for withdrawals -> can potentially be done with slippage constraints in place 
     }
 
 
@@ -179,7 +174,7 @@ contract Strategy is BaseStrategy {
         uint256 claimable = transmuter.getClaimableBalance(address(this));
 
         if (claimable > 0) {
-            transmuter.claim(claimable, address(this));
+            // transmuter.claim(claimable, address(this));
         }
 
         // NOTE : we can do this in harvest or can do seperately in tend 

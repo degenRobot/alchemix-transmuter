@@ -19,7 +19,7 @@ contract OperationTest is Setup {
         // TODO: add additional check on strat params
     }
 
-    function test_deposit(uint256 _amount) public {
+    function test_claim_and_swap(uint256 _amount) public {
         vm.assume(_amount > minFuzzAmount && _amount < maxFuzzAmount);
 
         // Deposit into strategy
@@ -95,7 +95,7 @@ contract OperationTest is Setup {
         vm.roll(1);
 
         vm.prank(keeper);
-        strategy.claimAndSwap(claimable, claimable * 105 / 100);
+        strategy.claimAndSwap(claimable, claimable * 108 / 100);
         // check balances post swap
         console.log("Claimable:", strategy.claimableBalance());
         console.log("Unexchanged Balance:", strategy.unexchangedBalance());
@@ -182,7 +182,7 @@ contract OperationTest is Setup {
         // Withdraw all funds
         vm.prank(user);
         strategy.redeem(_amount, user, user);
-
+        console.log("Amount:", _amount);
         assertGe(
             asset.balanceOf(user),
             balanceBefore + _amount,
@@ -233,6 +233,7 @@ contract OperationTest is Setup {
         vm.prank(user);
         strategy.redeem(_amount, user, user);
 
+        console.log("Amount:", _amount);
         assertGe(
             asset.balanceOf(user),
             balanceBefore + _amount,
