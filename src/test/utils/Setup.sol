@@ -82,12 +82,13 @@ contract Setup is ExtendedTest, IEvents {
         decimals = asset.decimals();
 
         // Deploy strategy and set variables
-        strategy = IStrategyInterface(setUpStrategy());
         
         transmuter = ITransmuter(0x03323143a5f0D0679026C2a9fB6b0391e4D64811);
         transmuterBuffer = ITransmuterBuffer(0xbc2FB245594a68c927C930FBE2d00680A8C90B9e);
         alchemist = IAlchemist(0x062Bf725dC4cDF947aa79Ca2aaCCD4F385b13b5c);
         transmuterKeeper = 0x9e2b6378ee8ad2A4A95Fe481d63CAba8FB0EBBF9;
+
+        strategy = IStrategyInterface(setUpStrategy());
 
         // whitelist hte strategy
         whitelist = IWhitelist(0x211C74DB951c161c5A379363716EbDca5125EF59);
@@ -111,7 +112,12 @@ contract Setup is ExtendedTest, IEvents {
     function setUpStrategy() public returns (address) {
         // we save the strategy as a IStrategyInterface to give it the needed interface
         IStrategyInterface _strategy = IStrategyInterface(
-            address(new Strategy(address(asset), "Tokenized Strategy"))
+            address(new Strategy(
+                address(asset),
+                address(transmuter),
+                0,
+                true,
+                "Tokenized Strategy"))
         );
 
         // set keeper
@@ -254,8 +260,6 @@ contract Setup is ExtendedTest, IEvents {
         underlying.approve(curvePool, smallAmount);
 
         ICurveStableSwapNG(curvePool).exchange(1, 0, smallAmount, 0, address(this));
-
-
 
     }
 

@@ -14,5 +14,5 @@ interface IRamsesRouter {
         route[] calldata routes,
         address to,
         uint256 deadline
-    ) external
+    ) external;
 }

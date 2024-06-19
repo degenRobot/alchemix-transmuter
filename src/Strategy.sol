@@ -37,23 +37,32 @@ contract Strategy is BaseStrategy {
 
     // since the asset is ALETH, we need to set the underlying to WETH
     ERC20 public underlying; 
+    bool public useOracle;
+
+    // 0 = Curve, 1 = Velo, 2 = Ramses 
+    uint public routerType;
 
     constructor(
         address _asset,
+        address _transmuter,
+        uint _routerType,
+        bool _useOracle,
         string memory _name
     ) BaseStrategy(_asset, _name) {
+        transmuter = ITransmuter(0x03323143a5f0D0679026C2a9fB6b0391e4D64811);
+        require(transmuter.syntheticToken() == _asset, "Asset does not match transmuter synthetic token");
+        routerType = _routerType;
+        useOracle = _useOracle;
+        underlying = ERC20(transmuter.underlyingToken());
         _initStrategy();
     }
 
     function _initStrategy() internal {
-        transmuter = ITransmuter(0x03323143a5f0D0679026C2a9fB6b0391e4D64811);
         curvePool = ICurveStableSwapNG(0x8eFD02a0a40545F32DbA5D664CbBC1570D3FedF6);
 
         assetIndex = 0;
         underlyingIndex = 1;
 
-        // WETH
-        underlying = ERC20(0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2);
         asset.safeApprove(address(transmuter), type(uint256).max);
         underlying.safeApprove(address(curvePool), type(uint256).max);
         
@@ -91,19 +100,22 @@ contract Strategy is BaseStrategy {
     function _swapUnderlyingToAsset(uint256 _amount, uint256 minOut) internal {
         // TODO : we swap WETH to ALETH -> need to check that price is better than 1:1 
         // uint256 oraclePrice = 1e18 * 101 / 100;
-        uint256 oraclePrice = curvePool.price_oracle(0);
+        require(minOut > _amount, "minOut too low");
 
-        // TODO : check if need to do any decimal conversions 
-        if (oraclePrice > 1e18) {
+        if (useOracle) {
+            uint256 oraclePrice = curvePool.price_oracle(0);
             uint256 minDy = (_amount * oraclePrice / 1e18) * slippageContraint / bps;
             if (minDy < _amount) {
                 minDy = _amount;
             }
             require(minOut > minDy, "minDy too low");
-            require(minOut > _amount, "minOut too low");
-            uint256 underlyingBalance = underlying.balanceOf(address(this));
-            require(underlyingBalance >= _amount, "not enough underlying balance");
-            curvePool.exchange(underlyingIndex, assetIndex, _amount, minOut, address(this));
+
+        }
+
+        uint256 underlyingBalance = underlying.balanceOf(address(this));
+        require(underlyingBalance >= _amount, "not enough underlying balance");
+        curvePool.exchange(underlyingIndex, assetIndex, _amount, minOut, address(this));
+        
         }
 
     }

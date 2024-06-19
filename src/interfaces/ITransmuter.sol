@@ -14,5 +14,8 @@ interface ITransmuter {
     function totalUnexchanged() external view returns (uint256);
     function totalBuffered() external view returns (uint256);
 
+    function syntheticToken() external view returns (address);
+    function underlyingToken() external view returns (address);
+
 
 }
