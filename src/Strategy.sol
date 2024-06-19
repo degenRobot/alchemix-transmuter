@@ -31,7 +31,7 @@ contract Strategy is BaseStrategy {
     int128 public underlyingIndex;
 
     // Target % of reserves to keep liquid for withdrawals 
-    uint256 public targetReserve = 500;
+    uint256 public targetReserve = 0;
     uint256 public slippageContraint = 9900;
     uint256 public bps = 10000;
 
@@ -76,7 +76,7 @@ contract Strategy is BaseStrategy {
         uint256 targetReserveAmount = totalAssets * targetReserve / bps;
 
         if (targetReserveAmount < (asset.balanceOf(address(this)))) {
-            uint256 amountToDeposit = (asset.balanceOf(address(this))) - targetReserveAmount;
+            uint256 amountToDeposit = asset.balanceOf(address(this)) - targetReserveAmount;
             transmuter.deposit(amountToDeposit, address(this));
         }
     }
@@ -84,22 +84,26 @@ contract Strategy is BaseStrategy {
     function claimAndSwap(uint256 _amountClaim, uint256 _minOut) external onlyKeepers {
         transmuter.claim(_amountClaim, address(this));
         _swapUnderlyingToAsset(_amountClaim, _minOut);
+        transmuter.deposit(asset.balanceOf(address(this)), address(this));
     }
 
 
     function _swapUnderlyingToAsset(uint256 _amount, uint256 minOut) internal {
         // TODO : we swap WETH to ALETH -> need to check that price is better than 1:1 
-        uint256 oraclePrice = curvePool.price_oracle(0);
+        uint256 oraclePrice = 1e18 * 101 / 100;
+        //uint256 oraclePrice = curvePool.price_oracle(0);
 
         // TODO : check if need to do any decimal conversions 
         if (oraclePrice > 1e18) {
-            uint256 minDy = _amount * oraclePrice * slippageContraint / bps;
+            uint256 minDy = (_amount * oraclePrice / 1e18) * slippageContraint / bps;
             if (minDy < _amount) {
                 minDy = _amount;
             }
-            require(minDy > minOut, "minDy too low");
-
-            curvePool.exchange(assetIndex, underlyingIndex, _amount, minDy);
+            require(minOut > minDy, "minDy too low");
+            require(minOut > _amount, "minOut too low");
+            uint256 underlyingBalance = underlying.balanceOf(address(this));
+            require(underlyingBalance >= _amount, "not enough underlying balance");
+            curvePool.exchange(underlyingIndex, assetIndex, _amount, minOut, address(this));
         }
 
     }
@@ -127,20 +131,21 @@ contract Strategy is BaseStrategy {
      */
     function _freeFunds(uint256 _amount) internal override {
 
-        uint256 claimable = transmuter.getClaimableBalance(address(this));
+        uint256 totalAvailabe = transmuter.getUnexchangedBalance(address(this)) + asset.balanceOf(address(this));
 
-        if (claimable < _amount) {
-            transmuter.claim(_amount - claimable, address(this));
-        } else {
-            transmuter.claim(_amount, address(this));
+        if (_amount > asset.balanceOf(address(this))) {
+            uint256 amountToWithdraw = _amount - asset.balanceOf(address(this));
+            if (amountToWithdraw > transmuter.getUnexchangedBalance(address(this))) {
+                amountToWithdraw = transmuter.getUnexchangedBalance(address(this));
+            }
+            transmuter.withdraw(amountToWithdraw, address(this));
         }
-
         // NOTE : do we want to let the user init swap WETH back to ALETH for withdrawals -> can potentially be done with slippage constraints in place 
     }
 
 
     function balanceDeployed() public view returns (uint256) {
-        return transmuter.getExchangedBalance(address(this)) + transmuter.getUnexchangedBalance(address(this)) + underlying.balanceOf(address(this));
+        return transmuter.getUnexchangedBalance(address(this)) + underlying.balanceOf(address(this)) + asset.balanceOf(address(this));
     }
 
     /**
@@ -182,13 +187,12 @@ contract Strategy is BaseStrategy {
         //     _swapUnderlyingToAsset(underlying.balanceOf(address(this)));
         // }
         
-        uint256 exchanged = transmuter.getExchangedBalance(address(this));
         uint256 unexchanged = transmuter.getUnexchangedBalance(address(this));
 
         // NOTE : possible some dormant WETH that isn't swapped yet 
         uint256 underlyingBalance = underlying.balanceOf(address(this));
 
-        _totalAssets = exchanged + unexchanged + asset.balanceOf(address(this)) + underlyingBalance;
+        _totalAssets = unexchanged + asset.balanceOf(address(this)) + underlyingBalance;
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -213,6 +217,7 @@ contract Strategy is BaseStrategy {
      * @param . The address that is withdrawing from the strategy.
      * @return . The available amount that can be withdrawn in terms of `asset`
      */
+
     function availableWithdrawLimit(
         address /*_owner*/
     ) public view override returns (uint256) {
@@ -226,10 +231,19 @@ contract Strategy is BaseStrategy {
         //    return asset.balanceOf(address(this)) + asset.balanceOf(yieldSource);
         // }
         // NOTE : claimable balance can only be included if we are actually allowing swaps to happen on withdrawals
-        uint256 claimable = transmuter.getClaimableBalance(address(this));
+        //uint256 claimable = transmuter.getClaimableBalance(address(this));
         
-        return asset.balanceOf(address(this));
+        return asset.balanceOf(address(this)) + transmuter.getUnexchangedBalance(address(this));
     }
+
+    function claimableBalance() public view returns (uint256) {
+        return transmuter.getClaimableBalance(address(this));
+    }
+
+    function unexchangedBalance() public view returns (uint256) {
+        return transmuter.getUnexchangedBalance(address(this));
+    }
+    
 
     /**
      * @notice Gets the max amount of `asset` that an address can deposit.
