@@ -24,7 +24,6 @@ contract OperationTest is Setup {
 
         // Deposit into strategy
         mintAndDepositIntoStrategy(strategy, user, _amount);
-
         console.log("Amount deposited:", _amount);
         console.log("Total Assets:", strategy.totalAssets());
         console.log("Claimable:", strategy.claimableBalance());

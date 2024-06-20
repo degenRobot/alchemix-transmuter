@@ -9,6 +9,10 @@ size  :; forge build --sizes
 inspect :; forge inspect ${contract} storage-layout --pretty
 
 FORK_URL := ${ETH_RPC_URL} 
+# FORK_URL := ${ARBI_RPC_URL} 
+# FORK_URL := ${OPTIMISM_RPC_URL} 
+
+
 
 # local tests without fork
 test  :; forge test -vv --fork-url ${FORK_URL}
@@ -21,6 +25,11 @@ test-test  :; forge test -vv --match-test $(test) --fork-url ${FORK_URL}
 trace-test  :; forge test -vvv --match-test $(test) --fork-url ${FORK_URL}
 snapshot :; forge snapshot -vv --fork-url ${FORK_URL}
 snapshot-diff :; forge snapshot --diff -vv --fork-url ${FORK_URL}
+
+test-all :; 
+	forge test -vv --fork-url ${ETH_RPC_URL}
+	forge test -vv --fork-url ${OPTIMISM_RPC_URL}
+	forge test -vv --fork-url ${ARBI_RPC_URL}
 
 
 clean  :; forge clean

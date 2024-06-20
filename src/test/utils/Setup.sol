@@ -31,6 +31,19 @@ interface IFactory {
 
 contract Setup is ExtendedTest, IEvents {
     // Contract instances that we will use repeatedly.
+
+    struct config {
+        address asset;
+        address underlying;
+        address whitelist;
+        address transmuter;
+        address transmuterBuffer;
+        address alchemist;
+        address keeper;
+        address whale;
+    }
+
+
     ERC20 public asset;
     // Underlying ERC20 of AL Token -> we will use this to interact with transmuter to allow exchanges
     // I.e. as per : https://github.com/alchemix-finance/v2-foundry/blob/reward-collector-fix/test/TransmuterV2.spec.ts
@@ -44,17 +57,18 @@ contract Setup is ExtendedTest, IEvents {
 
     mapping(string => address) public tokenAddrs;
 
+    mapping(string => config) public configs;
+
     // Addresses for different roles we will use repeatedly.
     address public user = address(10);
     address public user2 = address(9);
     address public keeper = address(4);
     address public management = address(1);
     address public mockYieldToken;
-    address public yieldToken = 0x7f39C581F595B53c5cb19bD0b3f8dA6c935E2Ca0;
 
     address public performanceFeeRecipient = address(3);
-    address public buffer = 0xbc2FB245594a68c927C930FBE2d00680A8C90B9e;
-    address public whale = 0xBD28e1B15EcbE72706A445f77bd17FCd8Fe6f652;
+    //address public buffer = 0xbc2FB245594a68c927C930FBE2d00680A8C90B9e;
+    address public whale;
     address public transmuterKeeper;
 
     // Address of the real deployed Factory
@@ -73,25 +87,43 @@ contract Setup is ExtendedTest, IEvents {
 
     function setUp() public virtual {
         _setTokenAddrs();
+        _setConfig();
 
+        config memory stratConfig;
+        if (block.chainid == 1) {
+            // Mainnet
+            stratConfig = configs["mainnet"];
+
+        } else if (block.chainid == 10) {
+            // OP
+            stratConfig = configs["OP"];
+        } else if (block.chainid == 42161) {
+            // ARB
+            stratConfig = configs["ARB"];
+        } else {
+            revert("Chain ID not supported");
+        }
+
+        whale = stratConfig.whale;
         // Set asset
-        asset = ERC20(0x0100546F2cD4C9D97f798fFC9755E47865FF7Ee6);
-        underlying = ERC20(tokenAddrs["WETH"]);
+        asset = ERC20(stratConfig.asset);
+        underlying = ERC20(stratConfig.underlying);
 
         // Set decimals
         decimals = asset.decimals();
 
         // Deploy strategy and set variables
         
-        transmuter = ITransmuter(0x03323143a5f0D0679026C2a9fB6b0391e4D64811);
-        transmuterBuffer = ITransmuterBuffer(0xbc2FB245594a68c927C930FBE2d00680A8C90B9e);
-        alchemist = IAlchemist(0x062Bf725dC4cDF947aa79Ca2aaCCD4F385b13b5c);
-        transmuterKeeper = 0x9e2b6378ee8ad2A4A95Fe481d63CAba8FB0EBBF9;
+        transmuter = ITransmuter(stratConfig.transmuter);
+        transmuterBuffer = ITransmuterBuffer(stratConfig.transmuterBuffer);
+        alchemist = IAlchemist(stratConfig.alchemist);
+        transmuterKeeper = stratConfig.keeper;
 
         strategy = IStrategyInterface(setUpStrategy());
+        setUpDex();
 
         // whitelist hte strategy
-        whitelist = IWhitelist(0x211C74DB951c161c5A379363716EbDca5125EF59);
+        whitelist = IWhitelist(stratConfig.whitelist);
         vm.prank(whitelist.owner());
         whitelist.add(address(strategy));
 
@@ -115,8 +147,7 @@ contract Setup is ExtendedTest, IEvents {
             address(new Strategy(
                 address(asset),
                 address(transmuter),
-                0,
-                true,
+                false,
                 "Tokenized Strategy"))
         );
 
@@ -204,6 +235,66 @@ contract Setup is ExtendedTest, IEvents {
         tokenAddrs["DAI"] = 0x6B175474E89094C44Da98b954EedeAC495271d0F;
         tokenAddrs["USDC"] = 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48;
     }
+
+    function _setConfig() internal {
+
+        configs["mainnet"] = config(
+            0x0100546F2cD4C9D97f798fFC9755E47865FF7Ee6,
+            0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2,
+            0x211C74DB951c161c5A379363716EbDca5125EF59,
+            0x03323143a5f0D0679026C2a9fB6b0391e4D64811,
+            0xbc2FB245594a68c927C930FBE2d00680A8C90B9e,
+            0x062Bf725dC4cDF947aa79Ca2aaCCD4F385b13b5c,
+            0x9e2b6378ee8ad2A4A95Fe481d63CAba8FB0EBBF9,
+            0xBD28e1B15EcbE72706A445f77bd17FCd8Fe6f652
+        );
+
+        configs["OP"] = config(
+            0x3E29D3A9316dAB217754d13b28646B76607c5f04,
+            0x4200000000000000000000000000000000000006,
+            0xfa6A5D33e18CB0d52991536ab15750fB13119E45,
+            0xb7C4250f83289ff3Ea9f21f01AAd0b02fb19491a,
+            0x7f50923EE8E2BC3596a63998495baf2948a28f68,
+            0xe04Bb5B4de60FA2fBa69a93adE13A8B3B569d5B4,
+            0xC224bf25Dcc99236F00843c7D8C4194abE8AA94a,
+            0xC224bf25Dcc99236F00843c7D8C4194abE8AA94a
+
+        );
+        
+        configs["ARB"] = config(
+            0x17573150d67d820542EFb24210371545a4868B03, 
+            0x4200000000000000000000000000000000000006,
+            0xd691f5B477092c164ca4c75a23c3C9589E197F99 ,
+            0x1EB7D78d7f6D73e5de67Fa62Fd8b55c54Aa9c0D4,
+            0xECAd08EE07f1AA87f3E080997eBa6d02d28bb9D2,
+            0x654e16a0b161b150F5d1C8a5ba6E7A7B7760703A,
+            0x7e108711771DfdB10743F016D46d75A9379cA043,
+            0xb8950c47E8B9e539601cB47A167DE8bf4Cb1289E
+        );
+        
+    }
+    
+    function setUpDex() public {
+        if (address(asset) == 0x0100546F2cD4C9D97f798fFC9755E47865FF7Ee6) {
+            // Set up dex for mainnet i.e. curvePool
+            vm.prank(management);
+            strategy.setCurvePool(0x8eFD02a0a40545F32DbA5D664CbBC1570D3FedF6, 0, 1);
+        }
+
+        if (address(asset) == 0x3E29D3A9316dAB217754d13b28646B76607c5f04) {
+            // Set up dex for OP i.e. add Velo 
+            vm.prank(management);
+            address[] memory _path = new address[](2);
+            _path[0] = address(underlying);
+            _path[1] = address(asset);
+            strategy.setVeloRouter(0xa062aE8A9c5e11aaA026fc2670B0D65cCc8B2858, _path);
+
+        }
+
+
+    }
+
+    
 
     function deployMockYieldToken() public {
         mockYieldToken = address(

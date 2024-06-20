@@ -8,5 +8,6 @@ interface IStrategyInterface is IStrategy {
     function claimableBalance() external view returns (uint256);   
     function unexchangedBalance() external view returns (uint256);
     function claimAndSwap(uint256 _amountClaim, uint256 _minOut) external;
-
+    function setCurvePool(address _curvePool, int128 _assetIndex, int128 _underlyingIndex) external;
+    function setVeloRouter(address _router, address[] memory _path) external;
 }
