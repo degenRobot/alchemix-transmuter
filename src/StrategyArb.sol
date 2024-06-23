@@ -4,8 +4,6 @@ pragma solidity 0.8.18;
 import {BaseStrategy, ERC20} from "@tokenized-strategy/BaseStrategy.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {ITransmuter} from "./interfaces/ITransmuter.sol";
-import {ICurveStableSwapNG} from "./interfaces/ICurve.sol";
-import {IVeloRouter} from "./interfaces/IVelo.sol";
 import {IRamsesRouter} from "./interfaces/IRamses.sol";
 
 // Import interfaces for many popular DeFi projects, or add your own!
@@ -24,40 +22,13 @@ import {IRamsesRouter} from "./interfaces/IRamses.sol";
 
 // NOTE: To implement permissioned functions you can use the onlyManagement, onlyEmergencyAuthorized and onlyKeepers modifiers
 
-contract Strategy is BaseStrategy {
+contract StrategyArb is BaseStrategy {
     using SafeERC20 for ERC20;
 
     ITransmuter public transmuter;
     // since the asset is ALETH, we need to set the underlying to WETH
     ERC20 public underlying; 
-    bool public useOracle;
-
-    // 0 = Curve, 1 = Velo, 2 = Ramses 
-    uint public swapType;
-    mapping(uint => bool) public swapTypeEnabled;
-
     address public router;
-
-    // Curve Config
-    ICurveStableSwapNG public curvePool;
-    int128 public assetIndex;
-    int128 public underlyingIndex;
-
-    // Velo Config
-    struct veloRoute {
-        address from;
-        address to;
-        bool stable;
-        address factory;
-    }    address[] public defaultPath;
-    veloRoute[] public defaultRouteVelo;
-    // Ramses Config
-    struct ramsesRoute {
-        address from;
-        address to;
-        bool stable;
-    }
-    ramsesRoute[] public defaultRouteRamses;
 
     // Target % of reserves to keep liquid for withdrawals 
     uint256 public targetReserve = 0;
@@ -67,52 +38,27 @@ contract Strategy is BaseStrategy {
     constructor(
         address _asset,
         address _transmuter,
-        bool _useOracle,
         string memory _name
     ) BaseStrategy(_asset, _name) {
         transmuter = ITransmuter(_transmuter);
         require(transmuter.syntheticToken() == _asset, "Asset does not match transmuter synthetic token");
-        useOracle = _useOracle;
         underlying = ERC20(transmuter.underlyingToken());
         asset.safeApprove(address(transmuter), type(uint256).max);
         
-        //_initStrategy();
+        _initStrategy();
     }
 
     function _initStrategy() internal {
         
-        curvePool = ICurveStableSwapNG(0x8eFD02a0a40545F32DbA5D664CbBC1570D3FedF6);
-        assetIndex = 0;
-        underlyingIndex = 1;
-        underlying.safeApprove(address(curvePool), type(uint256).max);
+        router = 0xAAA87963EFeB6f7E0a2711F397663105Acb1805e;
+        underlying.safeApprove(address(router), type(uint256).max);
         
     }
 
-    function setCurvePool(address _curvePool, int128 _assetIndex, int128 _underlyingIndex) external onlyManagement {
-        swapType = 0;
-        swapTypeEnabled[swapType] = true;
-        curvePool = ICurveStableSwapNG(_curvePool);
-        assetIndex = _assetIndex;
-        underlyingIndex = _underlyingIndex;
-        underlying.safeApprove(address(curvePool), type(uint256).max);
 
-    }
-
-    function setVeloRouter(address _router, address[] memory _path) external onlyManagement {
-        swapType = 1;
-        swapTypeEnabled[swapType] = true;
+    function setRouter(address _router) external onlyManagement {
         router = _router;
         underlying.safeApprove(router, type(uint256).max);
-        // TODO : approve router for underlying + set the default path
-        defaultPath = _path;
-    }
-
-    function setRamsesRouter(address _router, ramsesRoute[] calldata _route) external onlyManagement {
-        swapType = 2;
-        swapTypeEnabled[swapType] = true;
-        router = _router;
-        underlying.safeApprove(router, type(uint256).max);
-        //defaultRoute = _route;
     }
 
     /**
@@ -137,58 +83,23 @@ contract Strategy is BaseStrategy {
         }
     }
 
-    function claimAndSwap(uint256 _amountClaim, uint256 _minOut) external onlyKeepers {
+    function claimAndSwap(uint256 _amountClaim, uint256 _minOut, IRamsesRouter.route[] calldata _path) external onlyKeepers {
         transmuter.claim(_amountClaim, address(this));
         uint256 balBefore = asset.balanceOf(address(this));
-
-        _swapUnderlyingToAsset(_amountClaim, _minOut);
-        
+        _swapUnderlyingToAsset(_amountClaim, _minOut, _path);
         uint256 balAfter = asset.balanceOf(address(this));
-        
         require((balAfter - balBefore) >= _minOut, "Slippage too high");
         transmuter.deposit(asset.balanceOf(address(this)), address(this));
     }
 
 
-    function _swapUnderlyingToAsset(uint256 _amount, uint256 minOut) internal {
+    function _swapUnderlyingToAsset(uint256 _amount, uint256 minOut, IRamsesRouter.route[] calldata _path) internal {
         // TODO : we swap WETH to ALETH -> need to check that price is better than 1:1 
         // uint256 oraclePrice = 1e18 * 101 / 100;
         require(minOut > _amount, "minOut too low");
-
-        if (useOracle) {
-            uint256 oraclePrice = curvePool.price_oracle(0);
-            uint256 minDy = (_amount * oraclePrice / 1e18) * slippageContraint / bps;
-            if (minDy < _amount) {
-                minDy = _amount;
-            }
-            require(minOut > minDy, "minDy too low");
-
-        }
-
         uint256 underlyingBalance = underlying.balanceOf(address(this));
         require(underlyingBalance >= _amount, "not enough underlying balance");
-        if (swapType == 0) {
-            _swapViaCurve(_amount, minOut);
-        } else if (swapType == 1) {
-            _swapViaVelo(_amount, minOut);
-        } else if (swapType == 2) {
-            _swapViaRamses(_amount, minOut);
-        }
-        //curvePool.exchange(underlyingIndex, assetIndex, _amount, minOut, address(this));
-        
-    }
-
-
-    function _swapViaCurve(uint256 _amount, uint256 minOut) internal {
-        curvePool.exchange(underlyingIndex, assetIndex, _amount, minOut, address(this));
-    }
-
-    function _swapViaVelo(uint256 _amount, uint256 minOut) internal {
-        //IVeloRouter(router).swapExactTokensForTokens(_amount, minOut, defaultPath, address(this), block.timestamp);
-    }
-
-    function _swapViaRamses(uint256 _amount, uint256 minOut) internal {
-        //IRamsesRouter(router).swapExactTokensForTokens(_amount, minOut, defaultRoute, address(this), block.timestamp);
+        IRamsesRouter(router).swapExactTokensForTokens(_amount, minOut, _path, address(this), block.timestamp);
     }
 
 

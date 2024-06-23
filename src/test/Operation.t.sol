@@ -4,6 +4,12 @@ pragma solidity ^0.8.18;
 import "forge-std/console.sol";
 import {Setup, ERC20, IStrategyInterface} from "./utils/Setup.sol";
 
+import {IStrategyInterfaceVelo} from "../interfaces/IStrategyInterface.sol";
+import {IStrategyInterfaceRamses} from "../interfaces/IStrategyInterface.sol";
+
+import {IVeloRouter} from "../interfaces/IVelo.sol";
+import {IRamsesRouter} from "../interfaces/IRamses.sol";
+
 contract OperationTest is Setup {
     function setUp() public virtual override {
         super.setUp();
@@ -94,7 +100,32 @@ contract OperationTest is Setup {
         vm.roll(1);
 
         vm.prank(keeper);
-        strategy.claimAndSwap(claimable, claimable * 108 / 100);
+
+        if (block.chainid == 1) {
+            // Mainnet
+            strategy.claimAndSwap(claimable, claimable * 105 / 100);
+
+        } else if (block.chainid == 10) {
+            // NOTE on OP we swap directly to WETH
+            IVeloRouter.route[] memory veloRoute = new IVeloRouter.route[](1);
+            veloRoute[0] = IVeloRouter.route(address(underlying), address(asset), true, 0xF1046053aa5682b4F9a81b5481394DA16BE5FF5a);
+            // Velo Iterface
+            IStrategyInterfaceVelo(address(strategy)).claimAndSwap(claimable, claimable * 103 / 100, veloRoute);
+        } else if (block.chainid == 42161) {
+            // ARB
+            // NOTE we swap first to eFrax and then to WETH
+            IRamsesRouter.route[] memory  ramsesRoute = new IRamsesRouter.route[](2);
+            address eFrax = 0x178412e79c25968a32e89b11f63B33F733770c2A;
+            ramsesRoute[0] = IRamsesRouter.route(address(underlying), eFrax, true);
+            ramsesRoute[1] = IRamsesRouter.route(eFrax, address(asset), true);
+
+            IStrategyInterfaceRamses(address(strategy)).claimAndSwap(claimable, claimable * 103 / 100, ramsesRoute);
+        } else {
+            revert("Chain ID not supported");
+        }        
+
+
+        
         // check balances post swap
         console.log("Claimable:", strategy.claimableBalance());
         console.log("Unexchanged Balance:", strategy.unexchangedBalance());

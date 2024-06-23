@@ -15,6 +15,7 @@ interface IAlchemist {
         uint256 creditUnlockBlocks;
     }
 
+    function admin() external view returns (address);
     function depositUnderlying(address yieldToken, uint256 amount, address rec, uint256 minOut) external;
     function mint(uint256 _amount, address _recipient) external;
     function repay(address _underlying, uint256 _amount, address _recipient) external;

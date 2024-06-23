@@ -5,7 +5,15 @@ import "forge-std/console.sol";
 import {ExtendedTest} from "./ExtendedTest.sol";
 
 import {Strategy, ERC20} from "../../Strategy.sol";
+
+import {StrategyOp} from "../../StrategyOp.sol";
+import {StrategyArb} from "../../StrategyArb.sol";
+import {StrategyMainnet} from "../../StrategyMainnet.sol";
+
 import {IStrategyInterface} from "../../interfaces/IStrategyInterface.sol";
+import {IStrategyInterfaceRamses} from "../../interfaces/IStrategyInterface.sol";
+import {IStrategyInterfaceVelo} from "../../interfaces/IStrategyInterface.sol";
+
 import {IWhitelist} from "../../interfaces/IWhitelist.sol";
 
 // Inherit the events so they can be checked if desired.
@@ -19,6 +27,8 @@ import {YieldTokenMock} from "../../mock/YieldTokenMock.sol";
 import {TokenAdapterMock} from "../../mock/TokenAdapterMock.sol";
 
 import {ICurveStableSwapNG} from "../../interfaces/ICurve.sol";
+import {IVeloRouter} from "../../interfaces/IVelo.sol";
+import {IRamsesRouter} from "../../interfaces/IRamses.sol";
 
 
 interface IFactory {
@@ -43,12 +53,14 @@ contract Setup is ExtendedTest, IEvents {
         address whale;
     }
 
-
     ERC20 public asset;
     // Underlying ERC20 of AL Token -> we will use this to interact with transmuter to allow exchanges
     // I.e. as per : https://github.com/alchemix-finance/v2-foundry/blob/reward-collector-fix/test/TransmuterV2.spec.ts
     ERC20 public underlying;
     IStrategyInterface public strategy;
+    IStrategyInterfaceRamses public strategyRamses;
+    IStrategyInterfaceVelo public strategyVelo;
+
     IWhitelist public whitelist;
 
     ITransmuter public transmuter;
@@ -56,7 +68,6 @@ contract Setup is ExtendedTest, IEvents {
     IAlchemist public alchemist;
 
     mapping(string => address) public tokenAddrs;
-
     mapping(string => config) public configs;
 
     // Addresses for different roles we will use repeatedly.
@@ -120,7 +131,7 @@ contract Setup is ExtendedTest, IEvents {
         transmuterKeeper = stratConfig.keeper;
 
         strategy = IStrategyInterface(setUpStrategy());
-        setUpDex();
+        //setUpDex();
 
         // whitelist hte strategy
         whitelist = IWhitelist(stratConfig.whitelist);
@@ -143,14 +154,33 @@ contract Setup is ExtendedTest, IEvents {
 
     function setUpStrategy() public returns (address) {
         // we save the strategy as a IStrategyInterface to give it the needed interface
-        IStrategyInterface _strategy = IStrategyInterface(
-            address(new Strategy(
+        address _strat;
+        if (block.chainid == 1) {
+            // Mainnet
+            _strat = address(new StrategyMainnet(
                 address(asset),
                 address(transmuter),
-                false,
-                "Tokenized Strategy"))
-        );
+                "Tokenized Strategy")
+            );
 
+        } else if (block.chainid == 10) {
+            _strat = address(new StrategyOp(
+                address(asset),
+                address(transmuter),
+                "Tokenized Strategy")
+            );
+
+        } else if (block.chainid == 42161) {
+            _strat = address(new StrategyArb(
+                address(asset),
+                address(transmuter),
+                "Tokenized Strategy")
+            );
+        } else {
+            revert("Chain ID not supported");
+        }
+
+        IStrategyInterface _strategy = IStrategyInterface(_strat);
         // set keeper
         _strategy.setKeeper(keeper);
         // set treasury
@@ -263,12 +293,13 @@ contract Setup is ExtendedTest, IEvents {
         
         configs["ARB"] = config(
             0x17573150d67d820542EFb24210371545a4868B03, 
-            0x4200000000000000000000000000000000000006,
+            0x82aF49447D8a07e3bd95BD0d56f35241523fBab1,
             0xd691f5B477092c164ca4c75a23c3C9589E197F99 ,
             0x1EB7D78d7f6D73e5de67Fa62Fd8b55c54Aa9c0D4,
             0xECAd08EE07f1AA87f3E080997eBa6d02d28bb9D2,
             0x654e16a0b161b150F5d1C8a5ba6E7A7B7760703A,
-            0x7e108711771DfdB10743F016D46d75A9379cA043,
+            //0x7e108711771DfdB10743F016D46d75A9379cA043,
+            0x886FF7a2d46dcc2276e2fD631957969441130847,
             0xb8950c47E8B9e539601cB47A167DE8bf4Cb1289E
         );
         
@@ -305,6 +336,8 @@ contract Setup is ExtendedTest, IEvents {
     function addMockYieldToken() public {
 
         address adapter = address(new TokenAdapterMock(mockYieldToken));
+
+        // ARB 0x886FF7a2d46dcc2276e2fD631957969441130847
 
         vm.prank(transmuterKeeper);
         alchemist.addYieldToken(mockYieldToken, IAlchemist.YieldTokenConfig(adapter, 1,  type(uint256).max, 1));

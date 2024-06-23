@@ -16,6 +16,10 @@ FORK_URL := ${ETH_RPC_URL}
 
 # local tests without fork
 test  :; forge test -vv --fork-url ${FORK_URL}
+test-op :; forge test -vv --fork-url ${OPTIMISM_RPC_URL}
+test-arb :; forge test -vv --fork-url ${ARBI_RPC_URL}
+test-mainnet :; forge test -vv --fork-url ${ETH_RPC_URL}	
+
 trace  :; forge test -vvv --fork-url ${FORK_URL}
 gas  :; forge test --fork-url ${FORK_URL} --gas-report
 test-contract  :; forge test -vv --match-contract $(contract) --fork-url ${FORK_URL}
