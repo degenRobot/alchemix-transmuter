@@ -6,3 +6,6 @@ interface ICurveStableSwapNG {
     function price_oracle(uint256 i) external view returns (uint256);
 }
 
+interface ICurveRouterNG {
+    function exchange(address[11] calldata _route, uint256[5][5] calldata _swapParams, uint256 _amountIn, uint256 _minAmountOut, address[5] calldata _pools, address _receiver) external;
+}

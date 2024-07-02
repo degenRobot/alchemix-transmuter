@@ -103,7 +103,11 @@ contract OperationTest is Setup {
 
         if (block.chainid == 1) {
             // Mainnet
-            strategy.claimAndSwap(claimable, claimable * 105 / 100);
+            IStrategyInterface(address(strategy)).claimAndSwap(
+                claimable,
+                claimable * 103 / 100,
+                0
+            );
 
         } else if (block.chainid == 10) {
             // NOTE on OP we swap directly to WETH

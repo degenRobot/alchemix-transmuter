@@ -4,7 +4,7 @@ pragma solidity 0.8.18;
 import {BaseStrategy, ERC20} from "@tokenized-strategy/BaseStrategy.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {ITransmuter} from "./interfaces/ITransmuter.sol";
-import {ICurveStableSwapNG} from "./interfaces/ICurve.sol";
+import {ICurveRouterNG} from "./interfaces/ICurve.sol";
 
 // Import interfaces for many popular DeFi projects, or add your own!
 //import "../interfaces/<protocol>/<Interface>.sol";
@@ -31,14 +31,18 @@ contract StrategyMainnet is BaseStrategy {
     bool public useOracle;
 
     // Curve Config
-    ICurveStableSwapNG public curvePool;
-    int128 public assetIndex;
-    int128 public underlyingIndex;
+    ICurveRouterNG public router;
 
     // Target % of reserves to keep liquid for withdrawals 
     uint256 public targetReserve = 0;
     uint256 public slippageContraint = 9600;
     uint256 public bps = 10000;
+
+    uint256 public nRoutes = 0;
+
+    mapping(uint256 => address[11]) public routes;
+    mapping(uint256 => uint256[5][5]) public swapParams;
+    mapping(uint256 => address[5]) public pools;
 
     constructor(
         address _asset,
@@ -54,20 +58,21 @@ contract StrategyMainnet is BaseStrategy {
     }
 
     function _initStrategy() internal {
-        curvePool = ICurveStableSwapNG(0x8eFD02a0a40545F32DbA5D664CbBC1570D3FedF6);
-        assetIndex = 0;
-        underlyingIndex = 1;
-        underlying.safeApprove(address(curvePool), type(uint256).max);
+        router = ICurveRouterNG(0xF0d4c12A5768D806021F80a262B4d39d26C58b8D);
+        underlying.safeApprove(address(router), type(uint256).max);
         
     }
 
-    function setCurvePool(address _curvePool, int128 _assetIndex, int128 _underlyingIndex) external onlyManagement {
-        curvePool = ICurveStableSwapNG(_curvePool);
-        assetIndex = _assetIndex;
-        underlyingIndex = _underlyingIndex;
-        underlying.safeApprove(address(curvePool), type(uint256).max);
+    function addRoute(
+        address[11] calldata _route,
+        uint256[5][5] calldata _swapParams,
+        address[5] calldata _pools
+    ) external onlyManagement {
+        routes[nRoutes] = _route;
+        swapParams[nRoutes] = _swapParams;
+        pools[nRoutes] = _pools;
+        nRoutes++;
     }
-
 
     /**
      * @dev Can deploy up to '_amount' of 'asset' in the yield source.
@@ -91,43 +96,27 @@ contract StrategyMainnet is BaseStrategy {
         }
     }
 
-    function claimAndSwap(uint256 _amountClaim, uint256 _minOut) external onlyKeepers {
+    function claimAndSwap(
+        uint256 _amountClaim, 
+        uint256 _minOut, 
+        uint256 _routeNumber
+    ) external onlyKeepers {
         transmuter.claim(_amountClaim, address(this));
         uint256 balBefore = asset.balanceOf(address(this));
+        require(_minOut > _amountClaim, "minOut too low");
 
-        _swapUnderlyingToAsset(_amountClaim, _minOut);
-        
+        router.exchange(
+            routes[_routeNumber],
+            swapParams[_routeNumber],
+            _amountClaim,
+            _minOut,
+            pools[_routeNumber],
+            address(this)
+        );        
         uint256 balAfter = asset.balanceOf(address(this));
         
         require((balAfter - balBefore) >= _minOut, "Slippage too high");
         transmuter.deposit(asset.balanceOf(address(this)), address(this));
-    }
-
-
-    function _swapUnderlyingToAsset(uint256 _amount, uint256 minOut) internal {
-        // TODO : we swap WETH to ALETH -> need to check that price is better than 1:1 
-        // uint256 oraclePrice = 1e18 * 101 / 100;
-        require(minOut > _amount, "minOut too low");
-
-        if (useOracle) {
-            uint256 oraclePrice = curvePool.price_oracle(0);
-            uint256 minDy = (_amount * oraclePrice / 1e18) * slippageContraint / bps;
-            if (minDy < _amount) {
-                minDy = _amount;
-            }
-            require(minOut > minDy, "minDy too low");
-
-        }
-
-        uint256 underlyingBalance = underlying.balanceOf(address(this));
-        require(underlyingBalance >= _amount, "not enough underlying balance");
-        _swapViaCurve(_amount, minOut);
-        
-    }
-
-
-    function _swapViaCurve(uint256 _amount, uint256 minOut) internal {
-        curvePool.exchange(underlyingIndex, assetIndex, _amount, minOut, address(this));
     }
 
     /**

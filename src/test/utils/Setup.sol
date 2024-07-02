@@ -131,7 +131,6 @@ contract Setup is ExtendedTest, IEvents {
         transmuterKeeper = stratConfig.keeper;
 
         strategy = IStrategyInterface(setUpStrategy());
-        //setUpDex();
 
         // whitelist hte strategy
         whitelist = IWhitelist(stratConfig.whitelist);
@@ -150,6 +149,13 @@ contract Setup is ExtendedTest, IEvents {
         vm.label(management, "management");
         vm.label(address(strategy), "strategy");
         vm.label(performanceFeeRecipient, "performanceFeeRecipient");
+
+        if (block.chainid == 1) {
+            // Mainnet
+            addCurveRoute();
+        }
+
+
     }
 
     function setUpStrategy() public returns (address) {
@@ -162,6 +168,8 @@ contract Setup is ExtendedTest, IEvents {
                 address(transmuter),
                 "Tokenized Strategy")
             );
+
+
 
         } else if (block.chainid == 10) {
             _strat = address(new StrategyOp(
@@ -305,32 +313,48 @@ contract Setup is ExtendedTest, IEvents {
         
     }
     
-    function setUpDex() public {
-        if (address(asset) == 0x0100546F2cD4C9D97f798fFC9755E47865FF7Ee6) {
-            // Set up dex for mainnet i.e. curvePool
-            vm.prank(management);
-            strategy.setCurvePool(0x8eFD02a0a40545F32DbA5D664CbBC1570D3FedF6, 0, 1);
-        }
 
-        if (address(asset) == 0x3E29D3A9316dAB217754d13b28646B76607c5f04) {
-            // Set up dex for OP i.e. add Velo 
-            vm.prank(management);
-            address[] memory _path = new address[](2);
-            _path[0] = address(underlying);
-            _path[1] = address(asset);
-            strategy.setVeloRouter(0xa062aE8A9c5e11aaA026fc2670B0D65cCc8B2858, _path);
-
-        }
-
-
-    }
-
-    
 
     function deployMockYieldToken() public {
         mockYieldToken = address(
             new YieldTokenMock("Mock Yield Token", "MYT", underlying)
         );
+    }
+
+    function addCurveRoute() public {
+            vm.label(0x8eFD02a0a40545F32DbA5D664CbBC1570D3FedF6, "curvePool");
+            address[11] memory crvRoute;
+            crvRoute[0] = address(underlying); // Underlying address
+            crvRoute[1] = address(0x8eFD02a0a40545F32DbA5D664CbBC1570D3FedF6); // Pool address
+            crvRoute[2] = address(asset);
+            // Fill the rest of the route with zero addresses
+            for (uint i = 4; i < 11; i++) {
+                crvRoute[i] = address(0);
+            }
+
+            uint256[5][5] memory swapParams;
+            // For this simple swap, we only need to set the first array
+            swapParams[0] = [
+                uint256(1), // i: index of underlying (WETH)
+                uint256(0), // j: index of asset (alETH)
+                uint256(1), // swap_type: 1 for standard token exchange
+                uint256(1), // pool_type: 1 - stable
+                uint256(2)  // n_coins: 2 for a two-coin pool
+            ];
+
+            // We don't need to specify pools for this simple swap
+            address[5] memory pools;
+            for (uint i = 0; i < 5; i++) {
+                pools[i] = address(0);
+            }
+
+            vm.prank(management);
+            IStrategyInterface(address(strategy)).addRoute(
+                crvRoute,
+                swapParams,
+                pools
+            );
+
     }
 
     function addMockYieldToken() public {
