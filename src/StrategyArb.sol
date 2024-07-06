@@ -6,21 +6,7 @@ import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol
 import {ITransmuter} from "./interfaces/ITransmuter.sol";
 import {IRamsesRouter} from "./interfaces/IRamses.sol";
 
-// Import interfaces for many popular DeFi projects, or add your own!
-//import "../interfaces/<protocol>/<Interface>.sol";
-
-/**
- * The `TokenizedStrategy` variable can be used to retrieve the strategies
- * specific storage data your contract.
- *
- *       i.e. uint256 totalAssets = TokenizedStrategy.totalAssets()
- *
- * This can not be used for write functions. Any TokenizedStrategy
- * variables that need to be updated post deployment will need to
- * come from an external call from the strategies specific `management`.
- */
-
-// NOTE: To implement permissioned functions you can use the onlyManagement, onlyEmergencyAuthorized and onlyKeepers modifiers
+// NOTE: Permissioned functions use the onlyManagement, onlyEmergencyAuthorized and onlyKeepers modifiers
 
 contract StrategyArb is BaseStrategy {
     using SafeERC20 for ERC20;
@@ -71,18 +57,20 @@ contract StrategyArb is BaseStrategy {
      *
      * @param _amount The amount of 'asset' that the strategy can attempt
      * to deposit in the yield source.
+     * Here alETH is deposited directly to the transmuter
+     * Note we could also swap WEETH to alETH here if available to claim but making this call permissioned due to sandwiching risk
      */
     function _deployFunds(uint256 _amount) internal override {
-
-        uint256 totalAssets = balanceDeployed() + asset.balanceOf(address(this));
-        uint256 targetReserveAmount = totalAssets * targetReserve / bps;
-
-        if (targetReserveAmount < (asset.balanceOf(address(this)))) {
-            uint256 amountToDeposit = asset.balanceOf(address(this)) - targetReserveAmount;
-            transmuter.deposit(amountToDeposit, address(this));
-        }
+        transmuter.deposit(_amount, address(this));
     }
 
+    /**
+     * @dev Function called by keeper to claim WETH from transmuter & swap to alETH at premium
+     * we ensure that we are always swapping at a premium (i.e. keeper cannot swap at a loss)
+        * @param _amountClaim The amount of WETH to claim from the transmuter
+        * @param _minOut The minimum amount of alETH to receive after swap
+        * @param _path The path to swap WETH to alETH (via Ramses Router)
+    */
     function claimAndSwap(uint256 _amountClaim, uint256 _minOut, IRamsesRouter.route[] calldata _path) external onlyKeepers {
         transmuter.claim(_amountClaim, address(this));
         uint256 balBefore = asset.balanceOf(address(this));
@@ -125,7 +113,7 @@ contract StrategyArb is BaseStrategy {
      * @param _amount, The amount of 'asset' to be freed.
      */
     function _freeFunds(uint256 _amount) internal override {
-        uint256 totalAvailabe = transmuter.getUnexchangedBalance(address(this)) + asset.balanceOf(address(this));
+        uint256 totalAvailabe = transmuter.getUnexchangedBalance(address(this));
         if (_amount > totalAvailabe) {
             transmuter.withdraw(totalAvailabe, address(this));
         } else {

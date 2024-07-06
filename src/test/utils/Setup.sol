@@ -4,11 +4,9 @@ pragma solidity 0.8.18;
 import "forge-std/console.sol";
 import {ExtendedTest} from "./ExtendedTest.sol";
 
-import {Strategy, ERC20} from "../../Strategy.sol";
-
+import {StrategyMainnet, ERC20} from "../../StrategyMainnet.sol";
 import {StrategyOp} from "../../StrategyOp.sol";
 import {StrategyArb} from "../../StrategyArb.sol";
-import {StrategyMainnet} from "../../StrategyMainnet.sol";
 
 import {IStrategyInterface} from "../../interfaces/IStrategyInterface.sol";
 import {IStrategyInterfaceRamses} from "../../interfaces/IStrategyInterface.sol";

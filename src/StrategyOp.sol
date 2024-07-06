@@ -6,34 +6,15 @@ import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol
 import {ITransmuter} from "./interfaces/ITransmuter.sol";
 import {IVeloRouter} from "./interfaces/IVelo.sol";
 
-// Import interfaces for many popular DeFi projects, or add your own!
-//import "../interfaces/<protocol>/<Interface>.sol";
-
-/**
- * The `TokenizedStrategy` variable can be used to retrieve the strategies
- * specific storage data your contract.
- *
- *       i.e. uint256 totalAssets = TokenizedStrategy.totalAssets()
- *
- * This can not be used for write functions. Any TokenizedStrategy
- * variables that need to be updated post deployment will need to
- * come from an external call from the strategies specific `management`.
- */
-
-// NOTE: To implement permissioned functions you can use the onlyManagement, onlyEmergencyAuthorized and onlyKeepers modifiers
+// NOTE: Permissioned functions use the onlyManagement, onlyEmergencyAuthorized and onlyKeepers modifiers
 
 contract StrategyOp is BaseStrategy {
     using SafeERC20 for ERC20;
 
     ITransmuter public transmuter;
-    // since the asset is ALETH, we need to set the underlying to WETH
+    // NOTE : since the asset is ALETH, we need to set the underlying to WETH
     ERC20 public underlying; 
     address public router;
-
-    // Target % of reserves to keep liquid for withdrawals 
-    uint256 public targetReserve = 0;
-    uint256 public slippageContraint = 9600;
-    uint256 public bps = 10000;
 
     constructor(
         address _asset,
@@ -55,7 +36,11 @@ contract StrategyOp is BaseStrategy {
         
     }
 
-
+    /**
+     * @dev Sets the router address for swapping WETH to alETH
+     * @param _router The address of the router
+     NOTE - only used if want to upgrade router 
+    */
     function setRouter(address _router) external onlyManagement {
         router = _router;
         underlying.safeApprove(router, type(uint256).max);
@@ -71,18 +56,22 @@ contract StrategyOp is BaseStrategy {
      *
      * @param _amount The amount of 'asset' that the strategy can attempt
      * to deposit in the yield source.
+     * Here alETH is deposited directly to the transmuter
+     * Note we could also swap WEETH to alETH here if available to claim but making this call permissioned due to sandwiching risk
      */
     function _deployFunds(uint256 _amount) internal override {
 
-        uint256 totalAssets = balanceDeployed() + asset.balanceOf(address(this));
-        uint256 targetReserveAmount = totalAssets * targetReserve / bps;
-
-        if (targetReserveAmount < (asset.balanceOf(address(this)))) {
-            uint256 amountToDeposit = asset.balanceOf(address(this)) - targetReserveAmount;
-            transmuter.deposit(amountToDeposit, address(this));
-        }
+        transmuter.deposit(_amount, address(this));
+        
     }
 
+    /**
+     * @dev Function called by keeper to claim WETH from transmuter & swap to alETH at premium
+     * we ensure that we are always swapping at a premium (i.e. keeper cannot swap at a loss)
+        * @param _amountClaim The amount of WETH to claim from the transmuter
+        * @param _minOut The minimum amount of alETH to receive after swap
+        * @param _path The path to swap WETH to alETH (via Velo Router)
+    */
     function claimAndSwap(uint256 _amountClaim, uint256 _minOut, IVeloRouter.route[] calldata _path ) external onlyKeepers {
         transmuter.claim(_amountClaim, address(this));
         uint256 balBefore = asset.balanceOf(address(this));
@@ -95,6 +84,9 @@ contract StrategyOp is BaseStrategy {
         transmuter.deposit(asset.balanceOf(address(this)), address(this));
     }
 
+    /**
+    @dev internal function for swapping WETH to alETH via Velo Router
+    */
 
     function _swapUnderlyingToAsset(uint256 _amount, uint256 minOut, IVeloRouter.route[] calldata _path) internal {
         // TODO : we swap WETH to ALETH -> need to check that price is better than 1:1 
@@ -127,7 +119,7 @@ contract StrategyOp is BaseStrategy {
      * @param _amount, The amount of 'asset' to be freed.
      */
     function _freeFunds(uint256 _amount) internal override {
-        uint256 totalAvailabe = transmuter.getUnexchangedBalance(address(this)) + asset.balanceOf(address(this));
+        uint256 totalAvailabe = transmuter.getUnexchangedBalance(address(this));
         if (_amount > totalAvailabe) {
             transmuter.withdraw(totalAvailabe, address(this));
         } else {
@@ -168,20 +160,10 @@ contract StrategyOp is BaseStrategy {
         returns (uint256 _totalAssets)
     {
 
-        uint256 claimable = transmuter.getClaimableBalance(address(this));
-
-        if (claimable > 0) {
-            // transmuter.claim(claimable, address(this));
-        }
-
-        // NOTE : we can do this in harvest or can do seperately in tend 
-        // if (underlying.balanceOf(address(this)) > 0) {
-        //     _swapUnderlyingToAsset(underlying.balanceOf(address(this)));
-        // }
-        
+        uint256 claimable = transmuter.getClaimableBalance(address(this));        
         uint256 unexchanged = transmuter.getUnexchangedBalance(address(this));
 
-        // NOTE : possible some dormant WETH that isn't swapped yet 
+        // NOTE : possible some dormant WETH that isn't swapped yet
         uint256 underlyingBalance = underlying.balanceOf(address(this));
 
         _totalAssets = unexchanged + asset.balanceOf(address(this)) + underlyingBalance;

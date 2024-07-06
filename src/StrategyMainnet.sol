@@ -6,21 +6,7 @@ import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol
 import {ITransmuter} from "./interfaces/ITransmuter.sol";
 import {ICurveRouterNG} from "./interfaces/ICurve.sol";
 
-// Import interfaces for many popular DeFi projects, or add your own!
-//import "../interfaces/<protocol>/<Interface>.sol";
-
-/**
- * The `TokenizedStrategy` variable can be used to retrieve the strategies
- * specific storage data your contract.
- *
- *       i.e. uint256 totalAssets = TokenizedStrategy.totalAssets()
- *
- * This can not be used for write functions. Any TokenizedStrategy
- * variables that need to be updated post deployment will need to
- * come from an external call from the strategies specific `management`.
- */
-
-// NOTE: To implement permissioned functions you can use the onlyManagement, onlyEmergencyAuthorized and onlyKeepers modifiers
+// NOTE: Permissioned functions use the onlyManagement, onlyEmergencyAuthorized and onlyKeepers modifiers
 
 contract StrategyMainnet is BaseStrategy {
     using SafeERC20 for ERC20;
@@ -32,12 +18,6 @@ contract StrategyMainnet is BaseStrategy {
 
     // Curve Config
     ICurveRouterNG public router;
-
-    // Target % of reserves to keep liquid for withdrawals 
-    uint256 public targetReserve = 0;
-    uint256 public slippageContraint = 9600;
-    uint256 public bps = 10000;
-
     uint256 public nRoutes = 0;
 
     mapping(uint256 => address[11]) public routes;
@@ -63,6 +43,13 @@ contract StrategyMainnet is BaseStrategy {
         
     }
 
+    /**
+     * @dev Add a new route to be passed into Curve Router for swap see : https://docs.curve.fi/router/CurveRouterNG/
+        * @param _route Route to be passed into Curve Router
+        * @param _swapParams Swap params to be passed into Curve Router
+        * @param _pools Pools to be passed into Curve Router
+     */
+
     function addRoute(
         address[11] calldata _route,
         uint256[5][5] calldata _swapParams,
@@ -84,17 +71,20 @@ contract StrategyMainnet is BaseStrategy {
      *
      * @param _amount The amount of 'asset' that the strategy can attempt
      * to deposit in the yield source.
+     * Here alETH is deposited directly to the transmuter
+     * Note we could also swap WETH to alETH here if available to claim but making this call permissioned due to sandwiching risk
      */
     function _deployFunds(uint256 _amount) internal override {
-
-        uint256 totalAssets = balanceDeployed() + asset.balanceOf(address(this));
-        uint256 targetReserveAmount = totalAssets * targetReserve / bps;
-
-        if (targetReserveAmount < (asset.balanceOf(address(this)))) {
-            uint256 amountToDeposit = asset.balanceOf(address(this)) - targetReserveAmount;
-            transmuter.deposit(amountToDeposit, address(this));
-        }
+        transmuter.deposit(_amount, address(this));
     }
+
+    /**
+     * @dev Function called by keeper to claim WETH from transmuter & swap to alETH at premium
+     * we ensure that we are always swapping at a premium (i.e. keeper cannot swap at a loss)
+        * @param _amountClaim The amount of WETH to claim from the transmuter
+        * @param _minOut The minimum amount of alETH to receive after swap
+        * @param _routeNumber Calls mapping to the params to be passed into curve router
+    */
 
     function claimAndSwap(
         uint256 _amountClaim, 
@@ -141,7 +131,7 @@ contract StrategyMainnet is BaseStrategy {
      * @param _amount, The amount of 'asset' to be freed.
      */
     function _freeFunds(uint256 _amount) internal override {
-        uint256 totalAvailabe = transmuter.getUnexchangedBalance(address(this)) + asset.balanceOf(address(this));
+        uint256 totalAvailabe = transmuter.getUnexchangedBalance(address(this));
         if (_amount > totalAvailabe) {
             transmuter.withdraw(totalAvailabe, address(this));
         } else {
