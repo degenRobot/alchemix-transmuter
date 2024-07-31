@@ -37,6 +37,9 @@ contract StrategyMainnet is BaseStrategy {
         _initStrategy();
     }
 
+    /**
+     * @dev Initializes the strategy with the router address & approves WETH to be swapped via router
+    */
     function _initStrategy() internal {
         router = ICurveRouterNG(0xF0d4c12A5768D806021F80a262B4d39d26C58b8D);
         underlying.safeApprove(address(router), type(uint256).max);

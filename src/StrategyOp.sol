@@ -29,6 +29,10 @@ contract StrategyOp is BaseStrategy {
         _initStrategy();
     }
 
+    /**
+     * @dev Initializes the strategy with the router address & approves WETH to be swapped via router
+    */
+
     function _initStrategy() internal {
         
         router = 0xa062aE8A9c5e11aaA026fc2670B0D65cCc8B2858;

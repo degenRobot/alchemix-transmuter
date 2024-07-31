@@ -16,11 +16,6 @@ contract StrategyArb is BaseStrategy {
     ERC20 public underlying; 
     address public router;
 
-    // Target % of reserves to keep liquid for withdrawals 
-    uint256 public targetReserve = 0;
-    uint256 public slippageContraint = 9600;
-    uint256 public bps = 10000;
-
     constructor(
         address _asset,
         address _transmuter,
@@ -33,7 +28,9 @@ contract StrategyArb is BaseStrategy {
         
         _initStrategy();
     }
-
+    /**
+     * @dev Initializes the strategy with the router address & approves WETH to be swapped via router
+    */
     function _initStrategy() internal {
         
         router = 0xAAA87963EFeB6f7E0a2711F397663105Acb1805e;
