@@ -19,18 +19,12 @@ Alchemix
 
 The strategy utilises Yearn V3 strategy template & builds on top of Alchemix providing an automated strategy which allows users to earn yield on Alchemix tokens (primiarly alETH) by taking advantage of potential depegs. The strategy deposits to Alchemix's transmuter contract, an external keeper can claim alETH for WETH & execute a swap back to alETH at a premium to take advantage of any depeg of alETH vs WETH. 
 
-```
-About
-
-This project is meant to enable smart contract auditors (sellers) and smart contract protocols
-looking for audits (buyers) to connect using a credibly neutral option, with optional arbitration.
 
 [Documentation](https://docs.alchemix.fi/)
 [Transmuter](https://docs.alchemix.fi/alchemix-ecosystem/transmuter)
 [Website](https://alchemix.fi/)
 [Twitter](www.twitter.com/AlchemixFi)
 [GitHub](www.GitHub.com/account)
-```
 
 ## Actors
 
