@@ -1,12 +1,11 @@
 # Protocol Name 
 Alchemix
 
-### Prize Pool TO BE FILLED OUT BY XXXX
+### Prize Pool TO BE FILLED OUT BY CYFRIN
 
 - Total Pool - 
 - H/M -  
 - Low - 
-- Community Judging - 
 
 - Starts: 
 - Ends: 
@@ -17,8 +16,7 @@ Alchemix
 
 ## About the Project
 
-The strategy utilises Yearn V3 strategy template & builds on top of Alchemix providing an automated strategy which allows users to earn yield on Alchemix tokens (primiarly alETH) by taking advantage of potential depegs. The strategy deposits to Alchemix's transmuter contract, an external keeper can claim alETH for WETH & execute a swap back to alETH at a premium to take advantage of any depeg of alETH vs WETH. 
-
+The strategy utilises Yearn V3 strategy template & builds on top of Alchemix providing an automated strategy which allows users to earn yield on Alchemix tokens (primiarly alETH) by taking advantage of the discount of alETH from ETH. The strategy deposits to Alchemix's transmuter contract, an external keeper can claim alETH for WETH & execute a swap back to alETH at a premium to take advantage of any the alETH pricing relative to ETH
 
 [Documentation](https://docs.alchemix.fi/)
 [Transmuter](https://docs.alchemix.fi/alchemix-ecosystem/transmuter)
@@ -30,11 +28,15 @@ The strategy utilises Yearn V3 strategy template & builds on top of Alchemix pro
 
 
 Keeper: Has permission to call claimAndSwap (i.e. complete a claim from the transmuter for underlying asset & swap back to alx token at premium)
+
 Owner: Strategy owner - can call onlyOwner functions i.e. emergency functions within Yearn V3 tokenized strategy mix
+
 Manager: Can call functions with onlyManagement modifier - in this strategy this allows for swap routes to be added (i.e. when swapping via Velo which route is used)
+
 Depositor: Account that deposits the asset and holds Shares
 
 Note there are additional roles within the Yearn V3 tokenized strategy mix that are not used in this strategy & out of scope.
+
 Details here : https://docs.yearn.fi/developers/v3/strategy_writing_guide
 
 [//]: # (contest-details-close)
@@ -45,17 +47,26 @@ Details here : https://docs.yearn.fi/developers/v3/strategy_writing_guide
 
 ```
 src/
+├── StrategyArb.sol
+├── StrategyMainnet.sol
 ├── StrategyOp.sol
 ├── interfaces
 │   ├── IAlchemist.sol
-│   └── ITransmuter.sol
-│   └── IVeloRouter.sol
+│   ├── ICurve.sol
+│   ├── IRamses.sol
+│   ├── IStrategyInterface.sol
+│   ├── ITransmuter.sol
+│   ├── ITransmuterBuffer.sol
+│   ├── IVelo.sol
+│   └── IWhitelist.sol
 ```
 
 ## Compatibilities
 
 Blockchains:
     - Optimism
+    - Arbitrum
+    - Ethereum
 Tokens:
     - WETH
     - alETH
@@ -90,10 +101,26 @@ make build
 
 Run tests
 
+Tests run in fork environment, you need to complete the full installation and setup to be able to run these commands.
+
 ```sh
-make test-op
+make test
 ```
 
+Run tests with traces (very useful)
+
+```sh
+make trace
+```
+
+Additionally tests can be run for specific chains using the following
+
+```sh
+make test-op
+make test-arb
+make test-mainnet
+
+```
 ## Known Issues
 
 n/a
