@@ -144,7 +144,7 @@ contract StrategyMainnet is BaseStrategy {
 
 
     function balanceDeployed() public view returns (uint256) {
-        return transmuter.getUnexchangedBalance(address(this)) + underlying.balanceOf(address(this)) + asset.balanceOf(address(this));
+        return transmuter.getUnexchangedBalance(address(this)) + transmuter.getClaimableBalance(address(this)) + underlying.balanceOf(address(this)) + asset.balanceOf(address(this));
     }
 
     /**
@@ -174,21 +174,10 @@ contract StrategyMainnet is BaseStrategy {
         override
         returns (uint256 _totalAssets)
     {
-
-        uint256 claimable = transmuter.getClaimableBalance(address(this));
-
-        if (claimable > 0) {
-            // transmuter.claim(claimable, address(this));
-        }
-
-        // NOTE : we can do this in harvest or can do seperately in tend 
-        // if (underlying.balanceOf(address(this)) > 0) {
-        //     _swapUnderlyingToAsset(underlying.balanceOf(address(this)));
-        // }
+        uint256 claimable = transmuter.getClaimableBalance(address(this));        
         uint256 unexchanged = transmuter.getUnexchangedBalance(address(this));
-        // NOTE : possible some dormant WETH that isn't swapped yet (although we can restrict to only claim & swap in one tx)
-        uint256 underlyingBalance = underlying.balanceOf(address(this));
-        _totalAssets = unexchanged + asset.balanceOf(address(this)) + underlyingBalance;
+        _totalAssets = unexchanged + asset.balanceOf(address(this)) + claimable;
+
     }
 
     /*//////////////////////////////////////////////////////////////

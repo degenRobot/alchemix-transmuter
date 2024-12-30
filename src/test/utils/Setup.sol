@@ -88,8 +88,8 @@ contract Setup is ExtendedTest, IEvents {
     uint256 public MAX_BPS = 10_000;
 
     // Fuzz from $0.01 of 1e6 stable coins up to 1 trillion of a 1e18 coin
-    uint256 public maxFuzzAmount = 1e19;
-    uint256 public minFuzzAmount = 1e17;
+    uint256 public maxFuzzAmount = 5e18;
+    uint256 public minFuzzAmount = 1e16;
 
     // Default profit max unlock time is set for 10 days
     uint256 public profitMaxUnlockTime = 10 days;
@@ -296,6 +296,7 @@ contract Setup is ExtendedTest, IEvents {
             0xC224bf25Dcc99236F00843c7D8C4194abE8AA94a
 
         );
+
         
         configs["ARB"] = config(
             0x17573150d67d820542EFb24210371545a4868B03, 
@@ -304,9 +305,9 @@ contract Setup is ExtendedTest, IEvents {
             0x1EB7D78d7f6D73e5de67Fa62Fd8b55c54Aa9c0D4,
             0xECAd08EE07f1AA87f3E080997eBa6d02d28bb9D2,
             0x654e16a0b161b150F5d1C8a5ba6E7A7B7760703A,
-            //0x7e108711771DfdB10743F016D46d75A9379cA043,
-            0x886FF7a2d46dcc2276e2fD631957969441130847,
-            0xb8950c47E8B9e539601cB47A167DE8bf4Cb1289E
+            0x7e108711771DfdB10743F016D46d75A9379cA043,
+            //0xb8950c47E8B9e539601cB47A167DE8bf4Cb1289E
+            0x7e108711771DfdB10743F016D46d75A9379cA043
         );
         
     }

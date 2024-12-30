@@ -133,7 +133,7 @@ contract StrategyOp is BaseStrategy {
 
 
     function balanceDeployed() public view returns (uint256) {
-        return transmuter.getUnexchangedBalance(address(this)) + underlying.balanceOf(address(this)) + asset.balanceOf(address(this));
+        return transmuter.getUnexchangedBalance(address(this)) + transmuter.getClaimableBalance(address(this)) + underlying.balanceOf(address(this)) + asset.balanceOf(address(this));
     }
 
     /**
@@ -166,11 +166,7 @@ contract StrategyOp is BaseStrategy {
 
         uint256 claimable = transmuter.getClaimableBalance(address(this));        
         uint256 unexchanged = transmuter.getUnexchangedBalance(address(this));
-
-        // NOTE : possible some dormant WETH that isn't swapped yet
-        uint256 underlyingBalance = underlying.balanceOf(address(this));
-
-        _totalAssets = unexchanged + asset.balanceOf(address(this)) + underlyingBalance;
+        _totalAssets = unexchanged + asset.balanceOf(address(this)) + claimable;
     }
 
     /*//////////////////////////////////////////////////////////////

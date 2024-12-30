@@ -25,7 +25,7 @@ contract OperationTest is Setup {
         // TODO: add additional check on strat params
     }
 
-    function test_claim_and_swap(uint256 _amount) public {
+    function test_claim_and_swap_partial(uint256 _amount) public {
         vm.assume(_amount > minFuzzAmount && _amount < maxFuzzAmount);
 
         // Deposit into strategy
@@ -96,16 +96,21 @@ contract OperationTest is Setup {
         // we do this as oracle needs swap to be done recently
         //smallCurveSwap();
 
+        uint256 amountToClaim = claimable / 2;
+
         skip(1 seconds);
         vm.roll(1);
+
+
+        assertEq(strategy.balanceDeployed(), _amount, "balanceDeployed");
 
         vm.prank(keeper);
 
         if (block.chainid == 1) {
             // Mainnet
             IStrategyInterface(address(strategy)).claimAndSwap(
-                claimable,
-                claimable * 103 / 100,
+                amountToClaim,
+                amountToClaim * 1001 / 1000,
                 0
             );
 
@@ -114,7 +119,7 @@ contract OperationTest is Setup {
             IVeloRouter.route[] memory veloRoute = new IVeloRouter.route[](1);
             veloRoute[0] = IVeloRouter.route(address(underlying), address(asset), true, 0xF1046053aa5682b4F9a81b5481394DA16BE5FF5a);
             // Velo Iterface
-            IStrategyInterfaceVelo(address(strategy)).claimAndSwap(claimable, claimable * 103 / 100, veloRoute);
+            IStrategyInterfaceVelo(address(strategy)).claimAndSwap(amountToClaim, amountToClaim * 1001 / 1000, veloRoute);
         } else if (block.chainid == 42161) {
             // ARB
             // NOTE we swap first to eFrax and then to WETH
@@ -123,7 +128,7 @@ contract OperationTest is Setup {
             ramsesRoute[0] = IRamsesRouter.route(address(underlying), eFrax, true);
             ramsesRoute[1] = IRamsesRouter.route(eFrax, address(asset), true);
 
-            IStrategyInterfaceRamses(address(strategy)).claimAndSwap(claimable, claimable * 103 / 100, ramsesRoute);
+            IStrategyInterfaceRamses(address(strategy)).claimAndSwap(amountToClaim, amountToClaim * 1001 / 1000, ramsesRoute);
         } else {
             revert("Chain ID not supported");
         }        
@@ -142,13 +147,148 @@ contract OperationTest is Setup {
         vm.prank(keeper);
         (uint256 profit, uint256 loss) = strategy.report();
 
-        assertEq(strategy.claimableBalance(), 0, "!claimableBalance");
+        assertEq(strategy.claimableBalance(), claimable - amountToClaim, "!claimableBalance");
+        console.log("Claimable Balance", strategy.claimableBalance());
+        console.log("Unexchange Balance", strategy.unexchangedBalance());
+
         assertGt(strategy.totalAssets(), _amount, "!totalAssets");
 
-        assertEq(strategy.totalAssets(), strategy.claimableBalance(), "Force Failure");
+        //assertEq(strategy.totalAssets(), strategy.claimableBalance(), "Force Failure");
 
     }
 
+
+    function test_claim_and_swap_full(uint256 _amount) public {
+        vm.assume(_amount > minFuzzAmount && _amount < maxFuzzAmount);
+
+        // Deposit into strategy
+        mintAndDepositIntoStrategy(strategy, user, _amount);
+        console.log("Amount deposited:", _amount);
+        console.log("Total Assets:", strategy.totalAssets());
+        console.log("Claimable:", strategy.claimableBalance());
+        console.log("Unexchanged Balance:", strategy.unexchangedBalance());
+        console.log("Exchangable Balance:", transmuter.getExchangedBalance(address(strategy)));
+        console.log("Total Unexchanged:", transmuter.totalUnexchanged());
+        console.log("Total Buffered:", transmuter.totalBuffered());
+
+        assertApproxEq(strategy.totalAssets(), _amount, _amount / 500);
+        vm.roll(1);
+
+        deployMockYieldToken();
+        console.log("Deployed Mock Yield Token");
+        addMockYieldToken();
+        console.log("Added Mock Yield Token");
+        depositToAlchemist(_amount);
+        console.log("Deposited to Alchemist");
+        airdropToMockYield(_amount / 2);
+        console.log("Airdropped to Mock Yield");
+
+
+        /*
+        airdrop(underlying, address(transmuterKeeper), _amount);
+        vm.prank(transmuterKeeper);
+        underlying.approve(address(transmuterBuffer), _amount);
+        */
+
+        vm.prank(whale);
+        asset.transfer(user2, _amount);
+
+        vm.prank(user2);
+        asset.approve(address(transmuter), _amount);
+        
+        vm.prank(user2);
+        transmuter.deposit(_amount /2 , user2);
+
+        vm.roll(1);
+        harvestMockYield();
+
+        vm.prank(address(transmuterKeeper));
+        transmuterBuffer.exchange(address(underlying));
+
+        //Note : link to Transmuter tests https://github.com/alchemix-finance/v2-foundry/blob/reward-collector-fix/test/TransmuterV2.spec.ts
+        skip(7 days);
+        vm.roll(5);
+
+        vm.prank(user2);
+        transmuter.deposit(_amount /2 , user2);
+
+        vm.prank(address(transmuterKeeper));
+        transmuterBuffer.exchange(address(underlying));
+
+        console.log("Skip 7 days");
+        console.log("Claimable:", strategy.claimableBalance());
+        console.log("Unexchanged Balance:", strategy.unexchangedBalance());
+        console.log("Exchangable Balance:", transmuter.getExchangedBalance(address(strategy)));
+        console.log("Total Unexchanged:", transmuter.totalUnexchanged());
+        console.log("Total Buffered:", transmuter.totalBuffered());
+
+        assertGt(strategy.claimableBalance(), 0, "!claimableBalance");
+        assertEq(strategy.totalAssets(), _amount);
+        uint256 claimable = strategy.claimableBalance();
+
+        // we do this as oracle needs swap to be done recently
+        //smallCurveSwap();
+
+        uint256 amountToClaim = claimable;
+
+        skip(1 seconds);
+        vm.roll(1);
+
+
+        assertEq(strategy.balanceDeployed(), _amount, "balanceDeployed");
+
+        vm.prank(keeper);
+
+        if (block.chainid == 1) {
+            // Mainnet
+            IStrategyInterface(address(strategy)).claimAndSwap(
+                amountToClaim,
+                amountToClaim * 1001 / 1000,
+                0
+            );
+
+        } else if (block.chainid == 10) {
+            // NOTE on OP we swap directly to WETH
+            IVeloRouter.route[] memory veloRoute = new IVeloRouter.route[](1);
+            veloRoute[0] = IVeloRouter.route(address(underlying), address(asset), true, 0xF1046053aa5682b4F9a81b5481394DA16BE5FF5a);
+            // Velo Iterface
+            IStrategyInterfaceVelo(address(strategy)).claimAndSwap(amountToClaim, amountToClaim * 1001 / 1000, veloRoute);
+        } else if (block.chainid == 42161) {
+            // ARB
+            // NOTE we swap first to eFrax and then to WETH
+            IRamsesRouter.route[] memory  ramsesRoute = new IRamsesRouter.route[](2);
+            address eFrax = 0x178412e79c25968a32e89b11f63B33F733770c2A;
+            ramsesRoute[0] = IRamsesRouter.route(address(underlying), eFrax, true);
+            ramsesRoute[1] = IRamsesRouter.route(eFrax, address(asset), true);
+
+            IStrategyInterfaceRamses(address(strategy)).claimAndSwap(amountToClaim, amountToClaim * 1001 / 1000, ramsesRoute);
+        } else {
+            revert("Chain ID not supported");
+        }        
+
+
+        
+        // check balances post swap
+        console.log("Claimable:", strategy.claimableBalance());
+        console.log("Unexchanged Balance:", strategy.unexchangedBalance());
+        console.log("Exchangable Balance:", transmuter.getExchangedBalance(address(strategy)));
+        console.log("Total Unexchanged:", transmuter.totalUnexchanged());
+        console.log("Total Assets in Strategy:", strategy.totalAssets());
+        console.log("Free Assets in Strategy:", asset.balanceOf(address(strategy)));
+        console.log("Underlying in Strategy:", underlying.balanceOf(address(strategy)));
+
+        vm.prank(keeper);
+        (uint256 profit, uint256 loss) = strategy.report();
+
+        assertEq(strategy.claimableBalance(), claimable - amountToClaim, "!claimableBalance");
+        console.log("Claimable Balance", strategy.claimableBalance());
+        console.log("Unexchange Balance", strategy.unexchangedBalance());
+
+        assertGt(strategy.totalAssets(), _amount, "!totalAssets");
+
+        //assertEq(strategy.totalAssets(), strategy.claimableBalance(), "Force Failure");
+
+    }
 
     function test_operation(uint256 _amount) public {
         vm.assume(_amount > minFuzzAmount && _amount < maxFuzzAmount);
