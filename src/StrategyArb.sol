@@ -110,7 +110,10 @@ contract StrategyArb is BaseStrategy {
      * @param _amount, The amount of 'asset' to be freed.
      */
     function _freeFunds(uint256 _amount) internal override {
-        uint256 totalAvailabe = transmuter.getUnexchangedBalance(address(this));
+        uint256 claimable = transmuter.getClaimableBalance(address(this));        
+        uint256 unexchanged = transmuter.getUnexchangedBalance(address(this));
+
+        uint256 totalAvailabe = claimable + unexchanged;
         if (_amount > totalAvailabe) {
             transmuter.withdraw(totalAvailabe, address(this));
         } else {
@@ -293,13 +296,9 @@ contract StrategyArb is BaseStrategy {
      *
      * @param _amount The amount of asset to attempt to free.
      *
+    */
     function _emergencyWithdraw(uint256 _amount) internal override {
-        TODO: If desired implement simple logic to free deployed funds.
-
-        EX:
-            _amount = min(_amount, aToken.balanceOf(address(this)));
-            _freeFunds(_amount);
+        transmuter.withdraw(_amount, address(this));
     }
 
-    */
 }
